@@ -6,6 +6,8 @@
 #include "defs.h"
 #include "x86.h"
 #include "elf.h"
+#define DEFAULT_PRIORITY 10
+#define CURRENT_PRIORITY 2
 
 int
 exec(char *path, char **argv)
@@ -99,6 +101,8 @@ exec(char *path, char **argv)
   curproc->sz = sz;
   curproc->tf->eip = elf.entry;  // main
   curproc->tf->esp = sp;
+  // set current process's priority
+  curproc->priority = CURRENT_PRIORITY;
   switchuvm(curproc);
   freevm(oldpgdir);
   return 0;

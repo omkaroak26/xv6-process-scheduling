@@ -6,6 +6,9 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "lapic.h"
+#define DEFAULT_PRIORITY 10
+#define CURRENT_PRIORITY 2
 
 struct {
   struct spinlock lock;
@@ -70,8 +73,7 @@ myproc(void) {
 // If found, change state to EMBRYO and initialize
 // state required to run in the kernel.
 // Otherwise return 0.
-static struct proc*
-allocproc(void)
+static struct proc* allocproc(void)
 {
   struct proc *p;
   char *sp;
@@ -79,14 +81,24 @@ allocproc(void)
   acquire(&ptable.lock);
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+  {
     if(p->state == UNUSED)
+    {
       goto found;
-
+    }
+  }
   release(&ptable.lock);
   return 0;
 
 found:
   p->state = EMBRYO;
+
+  //give the priority as '10' as default for all processes
+  p->priority = DEFAULT_PRIORITY;
+
+  //initialize Slices to zero
+  p->currentSlice = 0;
+  p->extraSlice = 0;
   p->pid = nextpid++;
 
   release(&ptable.lock);
@@ -319,22 +331,60 @@ wait(void)
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
-void
-scheduler(void)
+void scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
+
+  //create a temporary process
+  struct proc* tempProcess;
+
+  //create a higher priority temp process
+  struct proc* highProcess;
+  
   c->proc = 0;
   
-  for(;;){
+  //Infinite loop
+  for(;;)
+  {
     // Enable interrupts on this processor.
     sti();
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+    {
       if(p->state != RUNNABLE)
+      {
         continue;
+      }
+
+	// Assume the current process is the one with the highest priority
+      highProcess = p;
+	
+	// Iterate through the process table to find a process with higher priority
+      tempProcess = ptable.proc;
+      
+      while (tempProcess < &ptable.proc[NPROC]) 
+      {
+	      // Check if the process is runnable and has higher priority
+	    if (tempProcess->priority < highProcess->priority) 
+	    {
+		if (tempProcess->state == RUNNABLE) 
+		{
+		    highProcess = tempProcess;
+		}
+	    }
+	    tempProcess++;
+	}
+
+      p = highProcess;
+
+      time_quantum_priority(p->priority);
+
+      switchuvm(p);
+
 
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
@@ -342,6 +392,8 @@ scheduler(void)
       c->proc = p;
       switchuvm(p);
       p->state = RUNNING;
+
+      p->currentSlice = p->extraSlice;    //make the current slice equal to the extra slice
 
       swtch(&(c->scheduler), p->context);
       switchkvm();
@@ -532,3 +584,32 @@ procdump(void)
     cprintf("\n");
   }
 }
+
+// added function to change priority of a process
+int chpriority(int pid, int priority) 
+{
+    struct proc *p;
+
+    // Acquire the process table lock
+    acquire(&ptable.lock);
+
+    // Start with the first process in the process table
+    p = ptable.proc;
+
+    // Simple linear search approach
+    while (p < &ptable.proc[NPROC]) 
+    {
+        if (p->pid == pid) 
+        {
+            // Update the priority of the process
+            p->priority = priority;
+            break;
+        }
+        p++;
+    }
+
+    release(&ptable.lock);
+
+    return pid;
+}
+

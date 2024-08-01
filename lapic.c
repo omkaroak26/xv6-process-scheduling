@@ -9,6 +9,8 @@
 #include "traps.h"
 #include "mmu.h"
 #include "x86.h"
+#include "lapic.h"
+#define DEFAULT_TIME_QUANTUM 10000000
 
 // Local APIC registers, divided by 4 for use as uint[] indices.
 #define ID      (0x0020/4)   // ID
@@ -104,6 +106,14 @@ lapicid(void)
     return 0;
   return lapic[ID] >> 24;
 }
+
+//self function for generating time quantum priority
+void time_quantum_priority(int priority)
+{
+	int set_time_quantum = DEFAULT_TIME_QUANTUM / priority;
+	lapicw(TICR, set_time_quantum);
+}
+
 
 // Acknowledge interrupt.
 void

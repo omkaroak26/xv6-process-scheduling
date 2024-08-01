@@ -89,3 +89,15 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+int sys_chpriority(void)
+{
+  int pid, priority;
+  // Retrieve the process ID and priority from the first and second argument
+  if(argint(0, &pid) < 0 || argint(1,&priority) < 0)
+  {
+    return -1;
+  }
+
+  return chpriority(pid, priority);
+}
